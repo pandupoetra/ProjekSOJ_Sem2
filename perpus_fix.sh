@@ -58,10 +58,40 @@ add_book() {
 
 # Fungsi untuk menghapus buku
 delete_book() {
-    echo "Masukkan judul buku yang ingin dihapus:"
-    read title
-    grep -v "$title" $BOOKS_FILE > temp.txt && mv temp.txt $BOOKS_FILE
-    echo "Buku berhasil dihapus (jika ada)."
+    echo "Masukkan judul buku yang ingin dihapus (atau sebagian judul):"
+    read input_title
+
+    # Cari buku yang mirip dengan judul yang dimasukkan
+    found_books=$(grep -i "$input_title" $BOOKS_FILE)
+
+    if [ -z "$found_books" ]; then
+        echo "Tidak ada buku yang ditemukan dengan judul '$input_title'."
+    else
+        echo "Buku yang ditemukan dengan judul '$input_title':"
+        echo "================================================================="
+        printf "| %-3s | %-30s | %-20s | %-4s |\n" "No" "Judul Buku" "Penulis" "Tahun"
+        echo "================================================================="
+        IFS=$'\n'
+        book_list=($found_books)
+        for i in "${!book_list[@]}"; do
+            book=${book_list[$i]}
+            title=$(echo $book | cut -d '|' -f 1)
+            author=$(echo $book | cut -d '|' -f 2)
+            year=$(echo $book | cut -d '|' -f 3)
+            printf "| %-3d | %-30s | %-20s | %-4s |\n" "$((i+1))" "$title" "$author" "$year"
+        done
+        echo "================================================================="
+        echo "Pilih nomor buku yang ingin dihapus (atau 0 untuk batal):"
+        read book_index
+
+        if [ "$book_index" -gt 0 ] && [ "$book_index" -le "${#book_list[@]}" ]; then
+            book_to_delete=${book_list[$((book_index-1))]}
+            grep -v -F "$book_to_delete" $BOOKS_FILE > temp.txt && mv temp.txt $BOOKS_FILE
+            echo "Buku berhasil dihapus."
+        else
+            echo "Penghapusan buku dibatalkan."
+        fi
+    fi
 }
 
 # Fungsi untuk mencari buku
@@ -75,9 +105,13 @@ search_book() {
 list_books() {
     if [ -f $BOOKS_FILE ]; then
         echo "================================================================="
-        printf "| %-30s | %-20s | %-4s |\n" "Judul Buku" "Penulis" "Tahun"
+        printf "| %-3s | %-30s | %-20s | %-4s |\n" "No" "Judul Buku" "Penulis" "Tahun"
         echo "================================================================="
-        awk -F'|' '{ printf "| %-30s | %-20s | %-4s |\n", $1, $2, $3 }' $BOOKS_FILE
+        i=1
+        while IFS='|' read -r title author year; do
+            printf "| %-3d | %-30s | %-20s | %-4s |\n" "$i" "$title" "$author" "$year"
+            i=$((i+1))
+        done < $BOOKS_FILE
         echo "================================================================="
     else
         echo "Tidak ada buku dalam perpustakaan."
@@ -90,7 +124,9 @@ list_borrowers() {
         echo "================================================================="
         printf "| %-30s | %-20s | %-15s | %-15s |\n" "Judul Buku" "Peminjam" "Tanggal Pinjam" "Batas Pengembalian"
         echo "================================================================="
-        awk -F'|' '{ printf "| %-30s | %-20s | %-15s | %-15s |\n", $1, $2, $3, $4 }' $BORROW_FILE
+        while IFS='|' read -r title borrower borrow_date return_date; do
+            printf "| %-30s | %-20s | %-15s | %-15s |\n" "$title" "$borrower" "$borrow_date" "$return_date"
+        done < $BORROW_FILE
         echo "================================================================="
     else
         echo "Tidak ada data peminjam."
