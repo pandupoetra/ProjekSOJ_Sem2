@@ -20,16 +20,16 @@ show_landing_page() {
 
 # Fungsi untuk menampilkan menu admin
 show_admin_menu() {
-    echo "============================"
+    echo "====================================="
     echo "Admin Menu"
-    echo "============================"
+    echo "====================================="
     echo "1. Tambah Buku"
     echo "2. Hapus Buku"
-    echo "3. Cari Buku"
-    echo "4. Tampilkan Semua Buku"
-    echo "5. Tampilkan Data Peminjam"
+    echo "3. Tampilkan Semua Buku"
+    echo "4. Tampilkan Data Peminjam"
+    echo "5. Tampilkan Data Peminjam Terlambat"
     echo "6. Kembali ke Halaman Utama"
-    echo "============================"
+    echo "====================================="
 }
 
 # Fungsi untuk menampilkan menu pengunjung
@@ -38,9 +38,10 @@ show_visitor_menu() {
     echo "Pengunjung Menu"
     echo "============================"
     echo "1. Tampilkan Semua Buku"
-    echo "2. Pinjam Buku"
-    echo "3. Kembalikan Buku"
-    echo "4. Kembali ke Halaman Utama"
+    echo "2. Cari Buku"
+    echo "3. Pinjam Buku"
+    echo "4. Kembalikan Buku"
+    echo "5. Kembali ke Halaman Utama"
     echo "============================"
 }
 
@@ -58,39 +59,24 @@ add_book() {
 
 # Fungsi untuk menghapus buku
 delete_book() {
-    echo "Masukkan judul buku yang ingin dihapus (atau sebagian judul):"
-    read input_title
+    echo "Daftar buku yang tersedia:"
+    list_books
+    echo "================================================================="
+    echo "Pilih nomor buku yang ingin dihapus (atau 0 untuk batal):"
+    read book_index
 
-    # Cari buku yang mirip dengan judul yang dimasukkan
-    found_books=$(grep -i "$input_title" $BOOKS_FILE)
-
-    if [ -z "$found_books" ]; then
-        echo "Tidak ada buku yang ditemukan dengan judul '$input_title'."
-    else
-        echo "Buku yang ditemukan dengan judul '$input_title':"
-        echo "================================================================="
-        printf "| %-3s | %-30s | %-20s | %-4s |\n" "No" "Judul Buku" "Penulis" "Tahun"
-        echo "================================================================="
-        IFS=$'\n'
-        book_list=($found_books)
-        for i in "${!book_list[@]}"; do
-            book=${book_list[$i]}
-            title=$(echo $book | cut -d '|' -f 1)
-            author=$(echo $book | cut -d '|' -f 2)
-            year=$(echo $book | cut -d '|' -f 3)
-            printf "| %-3d | %-30s | %-20s | %-4s |\n" "$((i+1))" "$title" "$author" "$year"
-        done
-        echo "================================================================="
-        echo "Pilih nomor buku yang ingin dihapus (atau 0 untuk batal):"
-        read book_index
-
-        if [ "$book_index" -gt 0 ] && [ "$book_index" -le "${#book_list[@]}" ]; then
-            book_to_delete=${book_list[$((book_index-1))]}
+    if [ "$book_index" -eq 0 ]; then
+        echo "Penghapusan buku dibatalkan."
+    elif [ "$book_index" -gt 0 ]; then
+        book_to_delete=$(sed "${book_index}q;d" $BOOKS_FILE)
+        if [ -n "$book_to_delete" ]; then
             grep -v -F "$book_to_delete" $BOOKS_FILE > temp.txt && mv temp.txt $BOOKS_FILE
             echo "Buku berhasil dihapus."
         else
-            echo "Penghapusan buku dibatalkan."
+            echo "Nomor buku tidak valid."
         fi
+    else
+        echo "Nomor buku tidak valid."
     fi
 }
 
@@ -104,15 +90,15 @@ search_book() {
 # Fungsi untuk menampilkan semua buku dalam format tabel
 list_books() {
     if [ -f $BOOKS_FILE ]; then
-        echo "================================================================="
+        echo "========================================================================="
         printf "| %-3s | %-30s | %-20s | %-4s |\n" "No" "Judul Buku" "Penulis" "Tahun"
-        echo "================================================================="
+        echo "========================================================================="
         i=1
         while IFS='|' read -r title author year; do
             printf "| %-3d | %-30s | %-20s | %-4s |\n" "$i" "$title" "$author" "$year"
             i=$((i+1))
         done < $BOOKS_FILE
-        echo "================================================================="
+        echo "========================================================================="
     else
         echo "Tidak ada buku dalam perpustakaan."
     fi
@@ -121,13 +107,35 @@ list_books() {
 # Fungsi untuk menampilkan data peminjam
 list_borrowers() {
     if [ -f $BORROW_FILE ]; then
-        echo "================================================================="
+        echo "==================================================================================================="
         printf "| %-30s | %-20s | %-15s | %-15s |\n" "Judul Buku" "Peminjam" "Tanggal Pinjam" "Batas Pengembalian"
-        echo "================================================================="
+        echo "==================================================================================================="
         while IFS='|' read -r title borrower borrow_date return_date; do
             printf "| %-30s | %-20s | %-15s | %-15s |\n" "$title" "$borrower" "$borrow_date" "$return_date"
         done < $BORROW_FILE
-        echo "================================================================="
+        echo "==================================================================================================="
+    else
+        echo "Tidak ada data peminjam."
+    fi
+}
+
+# Fungsi untuk menampilkan data peminjam terlambat
+list_late_borrowers() {
+    if [ -f $BORROW_FILE ]; then
+        echo "====================================================================================================================="
+        printf "| %-30s | %-20s | %-15s | %-15s | %-10s |\n" "Judul Buku" "Peminjam" "Tanggal Pinjam" "Tanggal kembali" "Denda"
+        echo "====================================================================================================================="
+        current_date=$(date +"%Y-%m-%d")
+        current_timestamp=$(date -d "$current_date" +%s)
+        while IFS='|' read -r title borrower borrow_date return_date; do
+            return_timestamp=$(date -d "$return_date" +%s)
+            if [ $current_timestamp -gt $return_timestamp ]; then
+                diff=$(( (current_timestamp - return_timestamp) / 3600 )) # Menghitung selisih waktu dalam jam
+                fine=$(( diff * 1000 )) # Denda 1000 per jam keterlambatan
+                printf "| %-30s | %-20s | %-15s | %-15s | Rp%-8d |\n" "$title" "$borrower" "$borrow_date" "$return_date" "$fine"
+            fi
+        done < $BORROW_FILE
+        echo "===================================================================================================================="
     else
         echo "Tidak ada data peminjam."
     fi
@@ -135,12 +143,27 @@ list_borrowers() {
 
 # Fungsi untuk meminjam buku
 borrow_book() {
-    echo "Masukkan judul buku yang ingin dipinjam:"
-    read title
+    echo "Daftar buku yang tersedia:"
+    list_books
+    echo "================================================================="
+    while true; do
+        echo "Masukkan judul buku yang ingin dipinjam (atau 0 untuk batal):"
+        read title
+        if [ "$title" == "0" ]; then
+            echo "Peminjaman buku dibatalkan."
+            return
+        fi
+        if grep -q -i "$title" $BOOKS_FILE; then
+            break
+        else
+            echo "Buku dengan judul '$title' tidak ditemukan."
+            echo "Silakan coba lagi atau ketik 0 untuk kembali."
+        fi
+    done
     echo "Masukkan nama peminjam:"
     read borrower
     borrow_date=$(date +"%Y-%m-%d")
-    return_date=$(date -d "$borrow_date +7 days" +"%Y-%m-%d") # batas pengembalian 7 hari
+    return_date=$(date -d "$borrow_date +3 days" +"%Y-%m-%d") # batas pengembalian 3 hari
     echo "$title | $borrower | $borrow_date | $return_date" >> $BORROW_FILE
     echo "Buku berhasil dipinjam. Invoice:"
     echo "==============================="
@@ -158,17 +181,24 @@ return_book() {
     echo "Masukkan nama peminjam:"
     read borrower
     current_date=$(date +"%Y-%m-%d")
+    
+    # Validasi input untuk memastikan bahwa title dan borrower tidak kosong
+    if [ -z "$title" ] || [ -z "$borrower" ]; then
+        echo "Judul buku dan nama peminjam harus diisi."
+        return
+    fi
+
     record=$(grep "$title | $borrower" $BORROW_FILE)
-    if [ -z "$record" ]; then
+    if [ -z "${record}" ]; then
         echo "Data peminjaman tidak ditemukan."
     else
         return_date=$(echo $record | awk -F'|' '{print $4}')
         return_timestamp=$(date -d "$return_date" +%s)
         current_timestamp=$(date -d "$current_date" +%s)
         if [ $current_timestamp -gt $return_timestamp ]; then
-            diff=$(( (current_timestamp - return_timestamp) / 86400 ))
-            fine=$(( diff * 1000 )) # Denda 1000 per hari keterlambatan
-            echo "Anda terlambat mengembalikan buku. Denda: Rp$fine"
+            diff=$(( (current_timestamp - return_timestamp) / 3600 )) # Menghitung selisih waktu dalam jam
+            fine=$(( diff * 1000 )) # Denda 1000 per jam keterlambatan
+            echo "Anda terlambat mengembalikan buku selama $diff jam. Denda: Rp$fine"
         else
             echo "Buku berhasil dikembalikan tepat waktu."
         fi
@@ -191,9 +221,9 @@ while true; do
                 case $admin_option in
                     1) add_book ;;
                     2) delete_book ;;
-                    3) search_book ;;
-                    4) list_books ;;
-                    5) list_borrowers ;;
+                    3) list_books ;;
+                    4) list_borrowers ;;
+                    5) list_late_borrowers ;;
                     6) break ;;
                     *) echo "Opsi tidak valid." ;;
                 esac
@@ -202,13 +232,14 @@ while true; do
         2)
             while true; do
                 show_visitor_menu
-                echo "Pilih opsi (1-4):"
+                echo "Pilih opsi (1-5):"
                 read visitor_option
                 case $visitor_option in
                     1) list_books ;;
-                    2) borrow_book ;;
-                    3) return_book ;;
-                    4) break ;;
+                    2) search_book ;;
+                    3) borrow_book ;;
+                    4) return_book ;;
+                    5) break ;;
                     *) echo "Opsi tidak valid." ;;
                 esac
             done
