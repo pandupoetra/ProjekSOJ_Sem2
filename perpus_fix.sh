@@ -25,10 +25,11 @@ show_admin_menu() {
     echo "====================================="
     echo "1. Tambah Buku"
     echo "2. Hapus Buku"
-    echo "3. Tampilkan Semua Buku"
-    echo "4. Tampilkan Data Peminjam"
-    echo "5. Tampilkan Data Peminjam Terlambat"
-    echo "6. Kembali ke Halaman Utama"
+    echo "3. Edit Buku"
+    echo "4. Tampilkan Semua Buku"
+    echo "5. Tampilkan Data Peminjam"
+    echo "6. Tampilkan Data Peminjam Terlambat"
+    echo "7. Kembali ke Halaman Utama"
     echo "====================================="
 }
 
@@ -43,6 +44,26 @@ show_visitor_menu() {
     echo "4. Kembalikan Buku"
     echo "5. Kembali ke Halaman Utama"
     echo "============================"
+}
+
+# Fungsi untuk autentikasi admin
+authenticate_admin() {
+    local username
+    local password
+
+    echo "Masukkan username:"
+    read username
+    echo "Masukkan password (tidak akan ditampilkan):"
+    stty -echo
+    read password
+    stty echo
+    echo
+
+    if [ "$username" = "admin" ] && [ "$password" = "admin123" ]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Fungsi untuk menambah buku
@@ -72,6 +93,43 @@ delete_book() {
         if [ -n "$book_to_delete" ]; then
             grep -v -F "$book_to_delete" $BOOKS_FILE > temp.txt && mv temp.txt $BOOKS_FILE
             echo "Buku berhasil dihapus."
+        else
+            echo "Nomor buku tidak valid."
+        fi
+    else
+        echo "Nomor buku tidak valid."
+    fi
+}
+
+# Fungsi untuk mengedit buku
+edit_book() {
+    echo "Daftar buku yang tersedia:"
+    list_books
+    echo "================================================================="
+    echo "Pilih nomor buku yang ingin diedit (atau 0 untuk batal):"
+    read book_index
+
+    if [ "$book_index" -eq 0 ]; then
+        echo "Pengeditan buku dibatalkan."
+    elif [ "$book_index" -gt 0 ]; then
+        book_to_edit=$(sed "${book_index}q;d" $BOOKS_FILE)
+        if [ -n "$book_to_edit" ]; then
+            IFS='|' read -r old_title old_author old_year <<< "$book_to_edit"
+            echo "Masukkan judul baru (kosongkan untuk tidak mengubah):"
+            read new_title
+            echo "Masukkan penulis baru (kosongkan untuk tidak mengubah):"
+            read new_author
+            echo "Masukkan tahun terbit baru (kosongkan untuk tidak mengubah):"
+            read new_year
+
+            # Tetapkan nilai baru jika tidak kosong, jika kosong gunakan nilai lama
+            [ -z "$new_title" ] && new_title="$old_title"
+            [ -z "$new_author" ] && new_author="$old_author"
+            [ -z "$new_year" ] && new_year="$old_year"
+
+            new_book="$new_title | $new_author | $new_year"
+            sed -i "${book_index}s/.*/$new_book/" $BOOKS_FILE
+            echo "Buku berhasil diedit."
         else
             echo "Nomor buku tidak valid."
         fi
@@ -146,20 +204,32 @@ borrow_book() {
     echo "Daftar buku yang tersedia:"
     list_books
     echo "================================================================="
-    while true; do
-        echo "Masukkan judul buku yang ingin dipinjam (atau 0 untuk batal):"
-        read title
-        if [ "$title" == "0" ]; then
-            echo "Peminjaman buku dibatalkan."
-            return
-        fi
-        if grep -q -i "$title" $BOOKS_FILE; then
-            break
-        else
-            echo "Buku dengan judul '$title' tidak ditemukan."
-            echo "Silakan coba lagi atau ketik 0 untuk kembali."
-        fi
-    done
+    # Meminta pengguna untuk memilih nomor urutan buku
+    echo "Masukkan nomor buku yang ingin dipinjam (atau 0 untuk batal):"
+    read book_number
+
+    # Validasi nomor buku yang dipilih
+    if [ "$book_number" = "0" ]; then
+        echo "Peminjaman buku dibatalkan."
+        return
+    elif ! [[ "$book_number" =~ ^[0-9]+$ ]]; then
+        echo "Nomor buku tidak valid."
+        return
+    fi
+
+    # Membaca buku yang dipilih dari file
+    selected_book=$(sed -n "${book_number}p" $BOOKS_FILE)
+
+    # Memeriksa apakah buku dipilih ada
+    if [ -z "$selected_book" ]; then
+        echo "Nomor buku tidak valid."
+        return
+    fi
+
+    # Memisahkan judul buku dari data yang dipilih
+    title=$(echo "$selected_book" | awk -F "|" '{print $1}')
+
+    # Meminta nama peminjam
     echo "Masukkan nama peminjam:"
     read borrower
     borrow_date=$(date +"%Y-%m-%d")
@@ -181,7 +251,6 @@ return_book() {
     echo "Masukkan nama peminjam:"
     read borrower
     current_date=$(date +"%Y-%m-%d")
-    
     # Validasi input untuk memastikan bahwa title dan borrower tidak kosong
     if [ -z "$title" ] || [ -z "$borrower" ]; then
         echo "Judul buku dan nama peminjam harus diisi."
@@ -207,6 +276,7 @@ return_book() {
     fi
 }
 
+
 # Main loop
 while true; do
     show_landing_page
@@ -214,20 +284,25 @@ while true; do
     read main_option
     case $main_option in
         1)
-            while true; do
-                show_admin_menu
-                echo "Pilih opsi (1-6):"
-                read admin_option
-                case $admin_option in
-                    1) add_book ;;
-                    2) delete_book ;;
-                    3) list_books ;;
-                    4) list_borrowers ;;
-                    5) list_late_borrowers ;;
-                    6) break ;;
-                    *) echo "Opsi tidak valid." ;;
-                esac
-            done
+            if authenticate_admin; then
+                while true; do
+                    show_admin_menu
+                    echo "Pilih opsi (1-7):"
+                    read admin_option
+                    case $admin_option in
+                        1) add_book ;;
+                        2) delete_book ;;
+                        3) edit_book ;;
+                        4) list_books ;;
+                        5) list_borrowers ;;
+                        6) list_late_borrowers ;;
+                        7) break ;;
+                        *) echo "Opsi tidak valid." ;;
+                    esac
+                done
+            else
+                echo "Autentikasi gagal. Kembali ke halaman utama."
+            fi
             ;;
         2)
             while true; do
